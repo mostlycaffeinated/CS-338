@@ -1,0 +1,258 @@
+#include <fstream>
+#include <iostream>
+#include <cstdio>
+#include <queue>
+#include <string>
+#include <vector>
+#include <bitset>
+#include<math.h>
+
+using namespace std;
+
+vector<pair<char, double>> freq_table{ make_pair('E', 11.1607), make_pair('A', 8.4966), make_pair('R', 7.5809), make_pair('I', 7.5448), make_pair('O', 7.1635), make_pair('T', 6.9509), make_pair('N', 6.6544), make_pair('S', 5.7351), make_pair('L', 5.4893), make_pair('C', 4.5388), make_pair('U', 3.6308), make_pair('D', 3.3844), make_pair('P', 3.1671), make_pair('M', 3.0129), make_pair('H', 3.0034), make_pair('G', 2.4705), make_pair('B', 2.0720), make_pair('F', 1.8121), make_pair('Y', 1.7779), make_pair('W', 1.2889), make_pair('K', 1.1016), make_pair('V', 1.0074), make_pair('X', 0.2902), make_pair('Z', 0.2722), make_pair('J', 0.1965), make_pair('Q', 0.1962), make_pair(' ', 0.0005), make_pair('.', 0.0004) };
+unsigned int index;
+bool found;
+vector<bool> enc_vals;
+
+struct Node{
+	Node *left; //if false
+	Node *right; //if true
+	char c;
+	double frequency;
+	vector<bool> huffcode;
+	bool isLeaf;
+};
+struct compareNode{
+	bool operator()(const Node *lhs, const Node *rhs){
+		return lhs->frequency > rhs->frequency;
+	}
+};
+
+class btree{
+	private:
+		Node *root;
+		void delTree(Node *top){
+			if(top == NULL){
+				return;
+			}
+			if(top->left != NULL){
+				delTree(top->left);
+			}
+			if(top->right != NULL){
+				delTree(top->right);
+			}
+			delete top;
+			return;
+		};
+	public:
+		btree(){
+			root = NULL;
+			return;
+		};
+		~btree(){
+			delTree(root);
+			return;
+		};
+		bool empty(){
+			return (root == NULL);
+		};
+		Node* find_key(Node* root, char key);
+		bool buildTree();
+		Node *get_root(){
+			return root;	
+		};
+		void gen_codes(Node* root, vector<bool> code);
+		btree &operator=(const btree &rhs){
+			root = rhs.root;
+		};
+		char code_traverse(vector<bool> code);
+};
+
+bool btree::buildTree(){
+	bool built = false;
+	priority_queue<Node*, vector<Node*>, compareNode> tree_collect;
+	for (unsigned int i = 0; i < freq_table.size(); ++i){
+		Node *n = new Node();
+		n->c = freq_table[i].first;
+		n->frequency = freq_table[i].second;
+		n->left = NULL;
+		n->right = NULL;
+		n->isLeaf = true;
+		tree_collect.push(n);
+	}
+	//build tree
+	vector<bool> temp_code = {};
+	while (tree_collect.size() > 1){
+		Node *lhs = tree_collect.top();
+		tree_collect.pop();
+		lhs->huffcode = temp_code;
+
+		Node *rhs = tree_collect.top();
+		tree_collect.pop();
+		rhs->huffcode = temp_code;
+
+		Node *stem_node = new Node();
+		stem_node->left = lhs;
+		stem_node->right = rhs;
+		stem_node->frequency = (lhs->frequency + rhs->frequency);
+		stem_node->isLeaf = false;
+
+		tree_collect.push(stem_node);
+		
+		temp_code.push_back(true); //going left
+	}
+	if(tree_collect.size() == 1){
+		root = tree_collect.top();
+		if(root != NULL){
+			built = true;
+		}
+	}
+	return built;
+}
+Node* btree::find_key(Node* bt_root, char c){
+	Node *tmp = new Node();
+	if(bt_root->isLeaf){
+		if(bt_root->c == c){
+			found = true;
+			for(unsigned int i = 0; i < bt_root->huffcode.size(); ++i){
+				tmp->huffcode.push_back(bt_root->huffcode[i]);
+				enc_vals.push_back(bt_root->huffcode[i]);
+			}
+			return tmp;
+		}
+	}
+	if(!found){
+		if(!bt_root->isLeaf){
+			find_key(bt_root->left,c);
+			if((!found)&&(!bt_root->isLeaf)){
+				find_key(bt_root->right,c);
+			}
+		}
+	}
+}
+char btree::code_traverse(vector<bool> code){
+	char ret;
+	Node *tmp = root;
+	while((index < code.size())&&(!tmp->isLeaf)){
+		if(!code.at(index)){
+			tmp = tmp->left;
+		}else{
+			tmp = tmp->right;
+		}
+		++index;
+	}
+	ret = tmp->c;
+	return ret;
+}
+void btree::gen_codes(Node* root, vector<bool> code){
+	if(root->isLeaf){
+		root->huffcode = code;
+	}else{
+		vector<bool> lcode = code;
+		lcode.push_back(false);
+		gen_codes(root->left, lcode);
+
+		vector<bool> rcode = code;
+		rcode.push_back(true);
+		gen_codes(root->right, rcode);
+	}
+}
+
+void encode(string filename){
+	ifstream infile(filename, ios::in);
+	ofstream outfile("huffman.enc", ios::out | ios::binary | ios::trunc);
+	if (!infile.is_open()){
+		cout << "Cannot open file" << endl;
+		return;
+	}
+	btree *bin_tree = new btree();
+	if(!bin_tree->buildTree()){
+		cout<<"Problem building tree.";
+		return;
+	}
+	char ch;
+	vector<bool> codes = {};
+	enc_vals  = {};
+	bin_tree->gen_codes(bin_tree->get_root(), codes);
+	while (infile.get(ch)){
+		found = false;
+		Node *ret = bin_tree->find_key(bin_tree->get_root(), ch);
+		if (ret == NULL){
+			cout << "Something went wrong.\n";
+			return;
+		}
+	}
+	int j = 1;
+	unsigned char bit_char = 0x00;	
+	for (unsigned int i = 0; i < enc_vals.size(); ++i){
+		if (enc_vals.at(i)){
+			bit_char |= 1 << (CHAR_BIT-j);
+		}
+		if(j == (CHAR_BIT)){
+			outfile.put(bit_char);
+			bit_char = 0x00;
+			j = 1;
+		}else{
+			++j;
+		}
+	}
+	outfile.put(bit_char); //write final char
+	infile.close();
+	outfile.close();
+}
+void decode(string filename){
+	ifstream infile(filename, ios::in | ios::binary);
+	ofstream outfile("huffman_decoded.txt", ios::out | ios::trunc);
+	if (!infile){
+		cout<<"Cannot open file."<<endl;
+		return;
+	}
+
+	btree *bin_tree = new btree();
+	if(!bin_tree->buildTree()){
+		cout<<"Problem building tree.";
+		return;
+	}
+	char enc_ch;
+	vector<bool>huffcode = {};
+	while (infile.read(&enc_ch,1)){
+		cout<<"read char is "<<hex<<enc_ch<<"\n";
+		bitset<8>bitcollect(enc_ch);
+		for (int i = 1; i <= CHAR_BIT; i++){
+			huffcode.push_back(bitcollect.test(CHAR_BIT-i));
+		}
+	}
+	
+	char ch;
+	index = 0;
+	while(index < huffcode.size()){
+		ch = bin_tree->code_traverse(huffcode);
+		outfile<<ch;
+		cout<<"ch "<<ch<<"\n";
+		if(ch == '.'){
+			break;
+		}
+	}
+	infile.close();
+	outfile.close();
+}
+
+int main(){
+	int user_option;
+
+	cout << "File options:\n1: Encode\n2: Decode\n";
+	cin >> user_option;
+	if (user_option == 1){
+		encode("huffman.txt");
+	}
+	else if (user_option == 2){
+		decode("huffman.enc");
+	}
+	else{
+		cout << "Invalid option.";
+	}
+	char ch;
+	cout << "Press any key to continue...";
+	cin >> ch;
+	return 0;
+}
